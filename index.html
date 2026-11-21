@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON DERBY — Destruction Arena</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#06070c; font-family:'Arial Black','Segoe UI',Arial,sans-serif; color:#e8f4ff; user-select:none; }
+  #game { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* ---------- overlays / effects ---------- */
+  #vignette { position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,5,0.55) 100%); }
+  #scanlines { position:fixed; inset:0; pointer-events:none; z-index:5; opacity:.07;
+    background:repeating-linear-gradient(0deg, transparent 0 2px, #000 2px 4px); }
+  #damageFlash { position:fixed; inset:0; pointer-events:none; z-index:6; opacity:0;
+    background:radial-gradient(ellipse at center, transparent 40%, rgba(255,30,30,0.45) 100%); transition:opacity .12s; }
+
+  /* ---------- HUD ---------- */
+  .hud { position:fixed; z-index:10; pointer-events:none; text-shadow:0 0 8px rgba(0,229,255,.6); }
+  #hudScore { top:18px; left:22px; font-size:15px; letter-spacing:2px; color:#9feaff; }
+  #hudScore b { display:block; font-size:34px; color:#fff; text-shadow:0 0 14px #00e5ff, 0 0 30px #008cff; }
+  #hudScore span { color:#ffd158; font-size:13px; display:block; margin-top:2px; text-shadow:0 0 8px #ff9d00; }
+
+  #hudTop { top:16px; left:50%; transform:translateX(-50%); text-align:center; font-size:14px; letter-spacing:3px; }
+  #hudTop .enemies { color:#ff5f7a; font-size:22px; font-weight:900; }
+  #hudTimer { color:#7fd8ff; font-size:12px; margin-top:4px; letter-spacing:4px; opacity:.85; }
+
+  #minimapWrap { top:14px; right:16px; background:rgba(4,8,18,.55); border:1px solid rgba(0,229,255,.35);
+    border-radius:10px; padding:6px; box-shadow:0 0 18px rgba(0,140,255,.25); backdrop-filter:blur(3px); }
+  #minimap { display:block; border-radius:6px; }
+
+  #hudBottom { bottom:22px; left:22px; width:280px; }
+  .barLabel { font-size:11px; letter-spacing:2px; color:#8fd8ff; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .bar { height:14px; background:rgba(10,16,30,.75); border:1px solid rgba(120,220,255,.3); border-radius:7px; overflow:hidden; margin-bottom:10px; }
+  .bar > div { height:100%; width:100%; border-radius:6px; transition:width .15s; }
+  #hpFill { background:linear-gradient(90deg,#00ffa3,#00e5ff); box-shadow:0 0 12px #00e5ff; }
+  #hpFill.low { background:linear-gradient(90deg,#ff3355,#ff7700); box-shadow:0 0 12px #ff3355; }
+  #nitroFill { background:linear-gradient(90deg,#ffd000,#ff8a00); box-shadow:0 0 12px #ff9d00; }
+
+  #hudSpeed { bottom:22px; right:26px; text-align:right; }
+  #hudSpeed .kmh { font-size:52px; font-weight:900; color:#fff; text-shadow:0 0 16px #00e5ff; line-height:1; }
+  #hudSpeed .unit { font-size:12px; letter-spacing:3px; color:#7fd8ff; }
+  #gear { font-size:14px; color:#ffd158; margin-top:6px; letter-spacing:2px; }
+
+  #notifs { top:24%; left:50%; transform:translateX(-50%); text-align:center; width:600px; }
+  .notif { font-size:26px; font-weight:900; letter-spacing:3px; margin:6px 0; opacity:0;
+    animation:notifAnim 2.4s ease forwards; }
+  .notif.kill { color:#ff5f7a; text-shadow:0 0 18px #ff2255,0 0 40px #ff0044; }
+  .notif.gain { color:#aef7ff; font-size:18px; text-shadow:0 0 12px #00c8ff; }
+  .notif.go { color:#7dff9b; text-shadow:0 0 18px #00ff66,0 0 40px #00cc33; font-size:46px; }
+  @keyframes notifAnim { 0%{opacity:0; transform:scale(1.6)} 12%{opacity:1; transform:scale(1)} 75%{opacity:1} 100%{opacity:0; transform:translateY(-14px)} }
+
+  #countdown { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center;
+    font-size:120px; font-weight:900; color:#fff; text-shadow:0 0 40px #00e5ff,0 0 90px #008cff; pointer-events:none; }
+
+  /* ---------- menus ---------- */
+  .screen { position:fixed; inset:0; z-index:30; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at 50% 35%, rgba(10,20,50,.92), rgba(3,4,10,.97));
+    text-align:center; }
+  .screen.hidden { display:none; }
+  .title { font-size:64px; font-weight:900; letter-spacing:6px; line-height:1;
+    background:linear-gradient(180deg,#aef7ff 20%,#00b3ff 60%,#0055ff); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 22px rgba(0,180,255,.8)); }
+  .title em { font-style:normal; background:linear-gradient(180deg,#ffe9a8 20%,#ff9d00 60%,#ff2200);
+    -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 0 22px rgba(255,120,0,.8)); }
+  .subtitle { margin-top:10px; font-size:14px; letter-spacing:6px; color:#ff5f7a; }
+  .controls { margin:34px 0 26px; display:grid; grid-template-columns:auto auto; gap:10px 22px; font-size:13px; color:#bcd9ee; text-align:left; }
+  .controls b { color:#fff; background:rgba(0,229,255,.12); border:1px solid rgba(0,229,255,.4); border-radius:6px;
+    padding:3px 10px; font-size:12px; letter-spacing:1px; box-shadow:0 0 10px rgba(0,229,255,.2); }
+  .btn { pointer-events:auto; cursor:pointer; border:none; outline:none; font-family:inherit; font-weight:900; font-size:22px;
+    letter-spacing:4px; color:#03131a; padding:16px 52px; border-radius:12px;
+    background:linear-gradient(180deg,#7df3ff,#00b3ff); box-shadow:0 0 30px rgba(0,180,255,.6), inset 0 2px 0 rgba(255,255,255,.6);
+    transition:transform .12s, box-shadow .12s; }
+  .btn:hover { transform:scale(1.05); box-shadow:0 0 50px rgba(0,200,255,.9), inset 0 2px 0 rgba(255,255,255,.6); }
+  .btn:active { transform:scale(.97); }
+  .btn.warn { background:linear-gradient(180deg,#ffd57d,#ff8a00); box-shadow:0 0 30px rgba(255,140,0,.55), inset 0 2px 0 rgba(255,255,255,.6); }
+  .note { margin-top:22px; font-size:11px; color:#6f87a0; letter-spacing:1px; }
+
+  #hudPause { display:none; }
+  #hudPause .title { font-size:44px; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="vignette"></div>
+<div id="scanlines"></div>
+<div id="damageFlash"></div>
+
+<div class="hud" id="hudScore">SCORE<b id="scoreVal">0</b><span id="multVal"></span></div>
+<div class="hud" id="hudTop"><div>ADVERSAIRES</div><div class="enemies" id="enemiesVal">5</div><div id="hudTimer">DERBY ROYALE</div></div>
+<div class="hud" id="minimapWrap"><canvas id="minimap" width="150" height="150"></canvas></div>
+<div class="hud" id="hudBottom">
+  <div class="barLabel"><span>INTÉGRITÉ</span><span id="hpTxt">100%</span></div>
+  <div class="bar"><div id="hpFill"></div></div>
+  <div class="barLabel"><span>NITRO</span><span id="nTxt">100%</span></div>
+  <div class="bar"><div id="nitroFill"></div></div>
+</div>
+<div class="hud" id="hudSpeed"><div class="kmh" id="kmhVal">0</div><div class="unit">KM/H</div><div id="gear">D1</div></div>
+<div class="hud" id="notifs"></div>
+<div id="countdown"></div>
+
+<div class="screen" id="menu">
+  <div class="title">NEON <em>DERBY</em></div>
+  <div class="subtitle">— DESTRUCTION ARENA · 6 PILOTES · 1 SURVIVANT —</div>
+  <div class="controls">
+    <b>Z / W / ↑</b><span>Accélérer</span>
+    <b>S / ↓</b><span>Reculer / Freiner</span>
+    <b>Q · D / ← →</b><span>Diriger</span>
+    <b>ESPACE</b><span>Frein à main (drift)</span>
+    <b>MAJ</b><span>Nitro</span>
+    <b>P</b><span>Pause</span>
+  </div>
+  <button class="btn" id="btnStart">LANCER LE DERBY</button>
+  <div class="note">Détruisez les 5 voitures adverses avant qu'elles ne détruisent la vôtre. Les collisions à haute vitesse font plus de dégâts.</div>
+</div>
+
+<div class="screen hidden" id="endScreen">
+  <div class="title" id="endTitle">DÉTRUIT</div>
+  <div class="subtitle" id="endSub">VOUS AVEZ ÉTÉ FRACTURÉ DANS L'ARÈNE</div>
+  <div class="controls" style="grid-template-columns:auto auto">
+    <b>SCORE FINAL</b><span id="endScore" style="font-size:26px;color:#ffd158">0</span>
+    <b>CARNAGE</b><span id="endKills" style="font-size:26px;color:#ff5f7a">0 détruits</span>
+  </div>
+  <button class="btn warn" id="btnRetry">REJOUER</button>
+</div>
+
+<div class="screen hidden" id="hudPause">
+  <div class="title">PAUSE</div>
+  <div class="note" style="margin-top:20px;font-size:14px">Appuyez sur <b style="color:#fff">P</b> pour reprendre</div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
